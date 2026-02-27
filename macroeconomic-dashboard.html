@@ -1,0 +1,992 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Macroeconomic Dashboard</title>
+  <style>
+    :root {
+      --bg-primary:    #0f1117;
+      --bg-secondary:  #1a1d27;
+      --bg-header:     #13161f;
+      --bg-cell:       #1e2130;
+      --bg-label:      #161925;
+      --border:        #2a2d3e;
+      --text-primary:  #e2e8f0;
+      --text-muted:    #64748b;
+      --text-dim:      #94a3b8;
+      --color-good:    #22c55e;
+      --color-warn:    #f59e0b;
+      --color-bad:     #ef4444;
+      --color-neutral: #94a3b8;
+      --color-accent:  #6366f1;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Header ─────────────────────────────────────────────── */
+    header {
+      background: var(--bg-header);
+      border-bottom: 1px solid var(--border);
+      padding: 1.25rem 1.5rem;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+    }
+
+    header h1 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
+
+    header h1 span {
+      color: var(--color-accent);
+    }
+
+    #data-period {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      background: var(--bg-secondary);
+      padding: 0.25rem 0.625rem;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+    }
+
+    /* ── Main ────────────────────────────────────────────────── */
+    main {
+      flex: 1;
+      padding: 1.5rem;
+    }
+
+    /* ── Loading ─────────────────────────────────────────────── */
+    #loading {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 1rem;
+      min-height: 50vh;
+    }
+
+    .spinner {
+      width: 3rem;
+      height: 3rem;
+      border: 3px solid var(--border);
+      border-top-color: var(--color-accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    #loading p {
+      color: var(--text-muted);
+      font-size: 0.9rem;
+    }
+
+    /* ── Error ───────────────────────────────────────────────── */
+    #error {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 1rem;
+      min-height: 50vh;
+      text-align: center;
+    }
+
+    #error-icon {
+      font-size: 2.5rem;
+    }
+
+    #error-msg {
+      color: var(--color-bad);
+      font-size: 0.95rem;
+      max-width: 28rem;
+    }
+
+    #retry-btn {
+      background: var(--color-accent);
+      color: #fff;
+      border: none;
+      padding: 0.5rem 1.25rem;
+      border-radius: 0.5rem;
+      font-size: 0.875rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+
+    #retry-btn:hover { opacity: 0.85; }
+
+    /* ── Dashboard ───────────────────────────────────────────── */
+    #dashboard {
+      display: none;
+    }
+
+    .table-wrapper {
+      overflow-x: auto;
+      border-radius: 0.75rem;
+      border: 1px solid var(--border);
+      background: var(--bg-secondary);
+    }
+
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      min-width: 680px;
+    }
+
+    /* Column header row */
+    thead tr th {
+      background: var(--bg-header);
+      padding: 0.875rem 1rem;
+      text-align: center;
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: var(--text-primary);
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+
+    thead tr th:first-child {
+      text-align: left;
+      background: var(--bg-label);
+      position: sticky;
+      left: 0;
+      z-index: 2;
+      min-width: 11rem;
+    }
+
+    .country-flag {
+      font-size: 1.1rem;
+      display: block;
+      margin-bottom: 0.2rem;
+    }
+
+    .country-name {
+      display: block;
+    }
+
+    /* Data rows */
+    tbody tr {
+      border-bottom: 1px solid var(--border);
+    }
+
+    tbody tr:last-child { border-bottom: none; }
+
+    tbody tr:hover td { background: rgba(255,255,255,0.025); }
+
+    /* Sticky label column */
+    tbody tr td:first-child {
+      position: sticky;
+      left: 0;
+      z-index: 1;
+      background: var(--bg-label);
+      border-right: 1px solid var(--border);
+      padding: 1rem 1.1rem;
+    }
+
+    tbody tr:hover td:first-child { background: var(--bg-label); }
+
+    .indicator-name {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--text-primary);
+      white-space: nowrap;
+    }
+
+    .indicator-unit {
+      font-size: 0.68rem;
+      color: var(--text-muted);
+      margin-top: 0.15rem;
+    }
+
+    /* Value cells */
+    tbody tr td {
+      padding: 0.75rem 0.875rem;
+      text-align: center;
+      vertical-align: middle;
+    }
+
+    .cell-inner {
+      position: relative;
+      display: inline-flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.15rem;
+      min-width: 5.5rem;
+    }
+
+    .cell-value {
+      font-size: 1.25rem;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: -0.02em;
+    }
+
+    .cell-unit {
+      font-size: 0.65rem;
+      color: var(--text-muted);
+    }
+
+    .cell-year {
+      position: absolute;
+      top: -0.35rem;
+      right: -0.5rem;
+      font-size: 0.55rem;
+      font-weight: 600;
+      background: rgba(255,255,255,0.07);
+      color: var(--text-muted);
+      padding: 0.1rem 0.3rem;
+      border-radius: 999px;
+      white-space: nowrap;
+    }
+
+    .good    { color: var(--color-good); }
+    .warn    { color: var(--color-warn); }
+    .bad     { color: var(--color-bad); }
+    .neutral { color: var(--color-neutral); }
+
+    /* ── Legend ──────────────────────────────────────────────── */
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      margin-top: 1rem;
+      font-size: 0.72rem;
+      color: var(--text-muted);
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+
+    .legend-dot {
+      width: 0.55rem;
+      height: 0.55rem;
+      border-radius: 50%;
+    }
+
+    /* ── Bond Section ────────────────────────────────────────── */
+    .section-divider {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin: 1.5rem 0 0.75rem;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--text-dim);
+    }
+
+    .section-note {
+      font-weight: 400;
+      color: var(--text-muted);
+    }
+
+    .bond-footnote {
+      font-size: 0.68rem;
+      color: var(--text-muted);
+      margin-top: 0.5rem;
+    }
+
+    /* ── Footer ──────────────────────────────────────────────── */
+    footer {
+      padding: 1rem 1.5rem;
+      text-align: center;
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      border-top: 1px solid var(--border);
+    }
+
+    footer a {
+      color: var(--color-accent);
+      text-decoration: none;
+    }
+
+    footer a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Macro<span>Economic</span> Dashboard</h1>
+  <span id="data-period">Loading…</span>
+</header>
+
+<main>
+  <!-- Loading -->
+  <section id="loading">
+    <div class="spinner"></div>
+    <p>Fetching from World Bank Open Data…</p>
+  </section>
+
+  <!-- Error -->
+  <section id="error">
+    <div id="error-icon">⚠️</div>
+    <p id="error-msg">Unable to load data. Check your internet connection.</p>
+    <button id="retry-btn">Retry</button>
+  </section>
+
+  <!-- Dashboard -->
+  <section id="dashboard">
+    <div class="table-wrapper">
+      <table id="main-table">
+        <thead>
+          <tr>
+            <th>Indicator</th>
+            <!-- country headers injected by JS -->
+          </tr>
+        </thead>
+        <tbody>
+          <!-- rows injected by JS -->
+        </tbody>
+      </table>
+    </div>
+
+    <div class="legend">
+      <span>Color key:</span>
+      <span class="legend-item"><span class="legend-dot" style="background:var(--color-good)"></span>Good</span>
+      <span class="legend-item"><span class="legend-dot" style="background:var(--color-warn)"></span>Caution</span>
+      <span class="legend-item"><span class="legend-dot" style="background:var(--color-bad)"></span>Concern</span>
+      <span class="legend-item"><span class="legend-dot" style="background:var(--color-neutral)"></span>Neutral / N/A</span>
+    </div>
+
+    <div class="section-divider">
+      <span>Bond Markets</span>
+      <span class="section-note">10-year government bond yield · Source: OECD</span>
+    </div>
+    <div class="table-wrapper" id="bond-table-wrapper">
+      <table id="bond-table">
+        <thead>
+          <tr>
+            <th>Indicator</th>
+            <!-- country headers injected by JS -->
+          </tr>
+        </thead>
+        <tbody>
+          <!-- rows injected by JS -->
+        </tbody>
+      </table>
+    </div>
+    <p class="bond-footnote">EU column = Germany (DEU) as proxy. China not available (not OECD member).</p>
+
+    <div class="section-divider">
+      <span>Energy</span>
+      <span class="section-note">Total primary energy consumption (all sources) · Source: World Bank</span>
+    </div>
+    <div class="table-wrapper" id="energy-table-wrapper">
+      <table id="energy-table">
+        <thead><tr><th>Indicator</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="bond-footnote">Derived from World Bank energy use per capita (EG.USE.PCAP.KG.OE) × population (SP.POP.TOTL). EU = European Union aggregate.</p>
+
+    <section>
+      <div class="section-divider">
+        <span>Freight</span>
+        <span class="section-note">Transport volumes · Source: World Bank</span>
+      </div>
+      <div class="table-wrapper" id="freight-table-wrapper">
+        <table id="freight-table">
+          <thead><tr></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p class="bond-footnote">Rail: million ton-km on domestic rail network (primarily internal). Air: million ton-km by country-registered carriers (primarily international). Sea: TEU container port throughput (international). Merch. Exports/Imports: BoP merchandise goods trade in current USD — compare directly with Sea Freight to gauge volume vs. value. EU = European Union aggregate.</p>
+    </section>
+  </section>
+</main>
+
+<footer>
+  Data sourced from the <a href="https://data.worldbank.org/" target="_blank" rel="noopener">World Bank Open Data API</a>.
+  Values represent the most recent available year. All rights reserved by respective data providers.
+</footer>
+
+<script>
+  /* ── Configuration ─────────────────────────────────────────── */
+  const COUNTRIES = [
+    { code: 'US', name: 'USA',   flag: '🇺🇸' },
+    { code: 'CN', name: 'China', flag: '🇨🇳' },
+    { code: 'EU', name: 'EU',    flag: '🇪🇺' },
+    { code: 'JP', name: 'Japan', flag: '🇯🇵' },
+    { code: 'IN', name: 'India', flag: '🇮🇳' },
+    { code: 'GB', name: 'UK',    flag: '🇬🇧' },
+  ];
+
+  const INDICATORS = [
+    {
+      id:    'NY.GDP.MKTP.KD.ZG',
+      label: 'GDP Growth Rate',
+      unit:  '% annual',
+      fmt:   v => v.toFixed(1),
+      color: v => {
+        if (v >= 3)  return 'good';
+        if (v >= 0)  return 'warn';
+        return 'bad';
+      },
+    },
+    {
+      id:    'FP.CPI.TOTL.ZG',
+      label: 'Inflation Rate (CPI)',
+      unit:  '% annual',
+      fmt:   v => v.toFixed(1),
+      color: v => {
+        if (v < 0 || v > 6) return 'bad';
+        if (v <= 3)          return 'good';
+        return 'warn';
+      },
+    },
+    {
+      id:    'SL.UEM.TOTL.ZS',
+      label: 'Unemployment Rate',
+      unit:  '% of labor force',
+      fmt:   v => v.toFixed(1),
+      color: v => {
+        if (v <= 4)  return 'good';
+        if (v <= 7)  return 'warn';
+        return 'bad';
+      },
+    },
+    {
+      id:    'BN.CAB.XOKA.GD.ZS',
+      label: 'Current Account Balance',
+      unit:  '% of GDP',
+      fmt:   v => (v >= 0 ? '+' : '') + v.toFixed(1),
+      color: v => {
+        if (v >= 1)   return 'good';
+        if (v >= -2)  return 'warn';
+        if (v >= -5)  return 'warn';  // deep negative still warn
+        return 'bad';
+      },
+    },
+    {
+      id:    'GC.DOD.TOTL.GD.ZS',
+      label: 'Government Debt',
+      unit:  '% of GDP',
+      fmt:   v => v.toFixed(0),
+      color: v => {
+        if (v < 40)   return 'good';
+        if (v < 70)   return 'neutral';
+        if (v < 100)  return 'warn';
+        return 'bad';
+      },
+    },
+  ];
+
+  const KTOE_TO_TWH = 0.01163;
+
+  const API_BASE = 'https://api.worldbank.org/v2';
+  const COUNTRY_PARAM = COUNTRIES.map(c => c.code).join(';');
+
+  // OECD country code mapping (null = not an OECD member → show N/A)
+  const OECD_COUNTRY_MAP = { US: 'USA', CN: null, EU: 'DEU', JP: 'JPN', IN: 'IND', GB: 'GBR' };
+
+  /* ── State ─────────────────────────────────────────────────── */
+  let isFetching = false;
+
+  /* ── DOM refs ───────────────────────────────────────────────── */
+  const $loading   = document.getElementById('loading');
+  const $error     = document.getElementById('error');
+  const $errorMsg  = document.getElementById('error-msg');
+  const $dashboard = document.getElementById('dashboard');
+  const $period    = document.getElementById('data-period');
+  const $thead     = document.querySelector('#main-table thead tr');
+  const $tbody     = document.querySelector('#main-table tbody');
+  const $retry     = document.getElementById('retry-btn');
+
+  $retry.addEventListener('click', init);
+
+  /* ── UI helpers ─────────────────────────────────────────────── */
+  function showLoading() {
+    $loading.style.display   = 'flex';
+    $error.style.display     = 'none';
+    $dashboard.style.display = 'none';
+  }
+
+  function showError(msg) {
+    $loading.style.display   = 'none';
+    $error.style.display     = 'flex';
+    $dashboard.style.display = 'none';
+    $errorMsg.textContent    = msg || 'Unexpected error occurred.';
+  }
+
+  function showDashboard() {
+    $loading.style.display   = 'none';
+    $error.style.display     = 'none';
+    $dashboard.style.display = 'block';
+  }
+
+  /* ── Fetch one indicator for all countries ──────────────────── */
+  async function fetchIndicator(indicator) {
+    const url =
+      `${API_BASE}/country/${COUNTRY_PARAM}/indicator/${indicator.id}` +
+      `?format=json&mrv=1&per_page=10`;
+
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status} for ${indicator.id}`);
+
+    const json = await res.json();
+    const dataArray = (json[1] ?? []);
+
+    // Build map: countryCode → { value, year }
+    const map = {};
+    for (const item of dataArray) {
+      const code = item.countryiso3166alpha2 ?? item.country?.id ?? null;
+      if (!code) continue;
+      map[code.toUpperCase()] = {
+        value: item.value,   // may be null
+        year:  item.date,
+      };
+    }
+    return map;
+  }
+
+  /* ── Fetch OECD 10Y bond yields ─────────────────────────────── */
+  async function fetchBondYields() {
+    const codes = Object.values(OECD_COUNTRY_MAP).filter(Boolean).join('+');
+    const url =
+      `https://sdmx.oecd.org/public/rest/data/OECD.SDD.STES,DSD_STES@DF_FINMARK,4.0/` +
+      `${codes}.A.IRLT..........?startPeriod=2022&format=jsondata`;
+
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`OECD HTTP ${res.status}`);
+    const json = await res.json();
+
+    const data     = json.data;
+    const struct   = data.structures[0];
+    const areaDim  = struct.dimensions.series[0];   // REF_AREA is first series dim
+    const timeDim  = struct.dimensions.observation[0]; // TIME_PERIOD
+
+    const timePeriods = timeDim.values; // [{id:"2023"}, {id:"2022"}, ...] — unordered
+
+    const seriesData = data.dataSets[0].series;
+    const result = {};
+
+    for (const [key, series] of Object.entries(seriesData)) {
+      const areaIdx = parseInt(key.split(':')[0], 10);
+      const locCode = areaDim.values[areaIdx].id;
+
+      // Skip aggregates (e.g. WXOECD)
+      if (!Object.values(OECD_COUNTRY_MAP).includes(locCode)) continue;
+
+      // Find the latest non-null observation by actual year value
+      const obs = series.observations;
+      let best = null;
+      for (const [idxStr, entry] of Object.entries(obs)) {
+        if (!entry || entry[0] === null || entry[0] === undefined) continue;
+        const year = timePeriods[parseInt(idxStr, 10)].id;
+        if (!best || year > best.year) {
+          best = { value: entry[0], year };
+        }
+      }
+      result[locCode] = best;
+    }
+
+    return result;
+  }
+
+  /* ── Color-code 10Y bond yield ──────────────────────────────── */
+  function bondYieldColor(v) {
+    if (v < 1)  return 'neutral';  // near-zero / deflation risk
+    if (v < 4)  return 'good';     // normal developed-economy range
+    if (v < 7)  return 'warn';     // elevated
+    return 'bad';                  // very high / fiscal stress
+  }
+
+  /* ── Fetch total primary energy consumption ─────────────────── */
+  async function fetchEnergyData() {
+    // EG.USE.COMM.KT.OE was archived. Compute total = per-capita × population.
+    // EG.USE.PCAP.KG.OE = energy use in kg of oil equivalent per person (kgoe/person)
+    // SP.POP.TOTL        = population (persons)
+    // total TWh = (kgoe/person × persons) / 1,000,000 ktoe * 0.01163 TWh/ktoe
+
+    async function fetchLatest(indicatorId) {
+      const url =
+        `${API_BASE}/country/${COUNTRY_PARAM}/indicator/${indicatorId}` +
+        `?format=json&mrv=5&per_page=50`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status} for ${indicatorId}`);
+      const dataArray = (await res.json())[1] ?? [];
+      const map = {};
+      for (const item of dataArray) {
+        if (item.value === null || item.value === undefined) continue;
+        const code = (item.countryiso3166alpha2 ?? item.country?.id ?? '').toUpperCase();
+        if (!code) continue;
+        if (!map[code] || item.date > map[code].year) {
+          map[code] = { value: item.value, year: item.date };
+        }
+      }
+      return map;
+    }
+
+    const [energyPerCapita, population] = await Promise.all([
+      fetchLatest('EG.USE.PCAP.KG.OE'),
+      fetchLatest('SP.POP.TOTL'),
+    ]);
+
+    const map = {};
+    for (const c of COUNTRIES) {
+      const epc = energyPerCapita[c.code];
+      const pop = population[c.code];
+      if (!epc || !pop) continue;
+      // kgoe/person × persons ÷ 1,000,000 = ktoe; ktoe × 0.01163 = TWh
+      map[c.code] = {
+        value: (epc.value * pop.value / 1_000_000) * KTOE_TO_TWH,
+        year: epc.year,
+      };
+    }
+    return map;
+  }
+
+  /* ── Build energy table DOM ─────────────────────────────────── */
+  function buildEnergyTable(energyData) {
+    const thead = document.querySelector('#energy-table thead tr');
+    const tbody = document.querySelector('#energy-table tbody');
+
+    // Headers
+    thead.innerHTML = '<th>Indicator</th>';
+    for (const c of COUNTRIES) {
+      const th = document.createElement('th');
+      th.innerHTML =
+        `<span class="country-flag">${c.flag}</span>` +
+        `<span class="country-name">${c.name}</span>`;
+      thead.appendChild(th);
+    }
+
+    // Single data row
+    tbody.innerHTML = '';
+    const tr = document.createElement('tr');
+
+    const labelTd = document.createElement('td');
+    labelTd.innerHTML =
+      `<div class="indicator-name">Total Energy Use</div>` +
+      `<div class="indicator-unit">TWh</div>`;
+    tr.appendChild(labelTd);
+
+    for (const c of COUNTRIES) {
+      const td = document.createElement('td');
+      const entry = energyData[c.code];
+
+      if (!entry || entry.value === null || entry.value === undefined) {
+        td.innerHTML =
+          `<div class="cell-inner">` +
+            `<span class="cell-value neutral">N/A</span>` +
+          `</div>`;
+      } else {
+        const disp = Math.round(entry.value).toLocaleString();
+        td.innerHTML =
+          `<div class="cell-inner">` +
+            `<span class="cell-value neutral">${disp}</span>` +
+            `<span class="cell-unit">TWh</span>` +
+            `<span class="cell-year">${entry.year}</span>` +
+          `</div>`;
+      }
+      tr.appendChild(td);
+    }
+
+    tbody.appendChild(tr);
+  }
+
+  /* ── Fetch freight volumes ──────────────────────────────────── */
+  async function fetchFreightData() {
+    async function fetchLatest(indicatorId) {
+      const url = `${API_BASE}/country/${COUNTRY_PARAM}/indicator/${indicatorId}`
+        + `?format=json&mrv=5&per_page=50`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status} for ${indicatorId}`);
+      const dataArray = (await res.json())[1] ?? [];
+      const map = {};
+      for (const item of dataArray) {
+        if (item.value === null || item.value === undefined) continue;
+        const code = (item.countryiso3166alpha2 ?? item.country?.id ?? '').toUpperCase();
+        if (!code) continue;
+        if (!map[code] || item.date > map[code].year) {
+          map[code] = { value: item.value, year: item.date };
+        }
+      }
+      return map;
+    }
+
+    const [railData, airData, seaData, exportData, importData] = await Promise.all([
+      fetchLatest('IS.RRS.GOOD.MT.K6'),
+      fetchLatest('IS.AIR.GOOD.MT.K1'),
+      fetchLatest('IS.SHP.GOOD.TU'),
+      fetchLatest('BX.GSR.MRCH.CD'),
+      fetchLatest('BM.GSR.MRCH.CD'),
+    ]);
+    return { railData, airData, seaData, exportData, importData };
+  }
+
+  /* ── Format large freight numbers as K / M / B ──────────────── */
+  function fmtFreight(v) {
+    if (v >= 1e9)  return (v / 1e9).toFixed(2) + 'B';
+    if (v >= 1e6)  return (v / 1e6).toFixed(2) + 'M';
+    if (v >= 1e3)  return (v / 1e3).toFixed(1) + 'K';
+    return Math.round(v).toString();
+  }
+
+  /* ── Format USD trade values as $B / $T ─────────────────────── */
+  function fmtUSD(v) {
+    if (v >= 1e12) return '$' + (v / 1e12).toFixed(2) + 'T';
+    if (v >= 1e9)  return '$' + (v / 1e9).toFixed(1) + 'B';
+    if (v >= 1e6)  return '$' + (v / 1e6).toFixed(1) + 'M';
+    return '$' + Math.round(v).toLocaleString('en-US');
+  }
+
+  /* ── Build freight table DOM ────────────────────────────────── */
+  function buildFreightTable({ railData, airData, seaData, exportData, importData }) {
+    const thead = document.querySelector('#freight-table thead tr');
+    const tbody = document.querySelector('#freight-table tbody');
+
+    thead.innerHTML = '<th>Indicator</th>';
+    for (const c of COUNTRIES) {
+      const th = document.createElement('th');
+      th.innerHTML = `<span class="country-flag">${c.flag}</span><span class="country-name">${c.name}</span>`;
+      thead.appendChild(th);
+    }
+
+    tbody.innerHTML = '';
+
+    const rows = [
+      { label: 'Rail Freight',     unit: 'M ton-km',      data: railData,    fmt: fmtFreight },
+      { label: 'Air Freight',      unit: 'M ton-km',      data: airData,     fmt: fmtFreight },
+      { label: 'Sea Freight',      unit: 'TEU',            data: seaData,     fmt: fmtFreight },
+      { label: 'Merch. Exports',   unit: 'goods, current $', data: exportData, fmt: fmtUSD },
+      { label: 'Merch. Imports',   unit: 'goods, current $', data: importData, fmt: fmtUSD },
+    ];
+
+    for (const row of rows) {
+      const tr = document.createElement('tr');
+      const labelTd = document.createElement('td');
+      labelTd.innerHTML = `<div class="indicator-name">${row.label}</div><div class="indicator-unit">${row.unit}</div>`;
+      tr.appendChild(labelTd);
+
+      for (const c of COUNTRIES) {
+        const td = document.createElement('td');
+        const entry = row.data[c.code];
+        if (!entry || entry.value === null || entry.value === undefined) {
+          td.innerHTML = `<div class="cell-inner"><span class="cell-value neutral">N/A</span></div>`;
+        } else {
+          const disp = row.fmt(entry.value);
+          td.innerHTML =
+            `<div class="cell-inner">` +
+              `<span class="cell-value neutral">${disp}</span>` +
+              `<span class="cell-unit">${row.unit}</span>` +
+              `<span class="cell-year">${entry.year}</span>` +
+            `</div>`;
+        }
+        tr.appendChild(td);
+      }
+      tbody.appendChild(tr);
+    }
+  }
+
+  /* ── Build bond table DOM ───────────────────────────────────── */
+  function buildBondTable(bondData) {
+    const wrapper = document.getElementById('bond-table-wrapper');
+    const thead = document.querySelector('#bond-table thead tr');
+    const tbody = document.querySelector('#bond-table tbody');
+
+    // Headers (same countries as main table)
+    thead.innerHTML = '<th>Indicator</th>';
+    for (const c of COUNTRIES) {
+      const th = document.createElement('th');
+      th.innerHTML =
+        `<span class="country-flag">${c.flag}</span>` +
+        `<span class="country-name">${c.name}</span>`;
+      thead.appendChild(th);
+    }
+
+    // Single data row
+    tbody.innerHTML = '';
+    const tr = document.createElement('tr');
+
+    const labelTd = document.createElement('td');
+    labelTd.innerHTML =
+      `<div class="indicator-name">10Y Bond Yield</div>` +
+      `<div class="indicator-unit">% per year</div>`;
+    tr.appendChild(labelTd);
+
+    for (const c of COUNTRIES) {
+      const td = document.createElement('td');
+      const oecdCode = OECD_COUNTRY_MAP[c.code];
+
+      if (!oecdCode) {
+        // Not an OECD member (China)
+        td.innerHTML =
+          `<div class="cell-inner">` +
+            `<span class="cell-value neutral">N/A</span>` +
+          `</div>`;
+      } else {
+        const entry = bondData[oecdCode];
+        if (!entry || entry.value === null || entry.value === undefined) {
+          td.innerHTML =
+            `<div class="cell-inner">` +
+              `<span class="cell-value neutral">N/A</span>` +
+            `</div>`;
+        } else {
+          const cls  = bondYieldColor(entry.value);
+          const disp = entry.value.toFixed(2);
+          td.innerHTML =
+            `<div class="cell-inner">` +
+              `<span class="cell-value ${cls}">${disp}</span>` +
+              `<span class="cell-unit">% / yr</span>` +
+              `<span class="cell-year">${entry.year}</span>` +
+            `</div>`;
+        }
+      }
+      tr.appendChild(td);
+    }
+
+    tbody.appendChild(tr);
+  }
+
+  /* ── Build table DOM ────────────────────────────────────────── */
+  function buildTable(results) {
+    // Collect all years for the period badge
+    const years = new Set();
+    for (const map of results) {
+      for (const entry of Object.values(map)) {
+        if (entry.year) years.add(entry.year);
+      }
+    }
+    const sortedYears = [...years].sort();
+    if (sortedYears.length === 0) {
+      $period.textContent = 'Data period: unavailable';
+    } else if (sortedYears.length === 1) {
+      $period.textContent = `Data period: ${sortedYears[0]}`;
+    } else {
+      $period.textContent =
+        `Data period: ${sortedYears[0]}–${sortedYears[sortedYears.length - 1]}`;
+    }
+
+    // Header columns
+    $thead.innerHTML = '<th>Indicator</th>';
+    for (const c of COUNTRIES) {
+      const th = document.createElement('th');
+      th.innerHTML =
+        `<span class="country-flag">${c.flag}</span>` +
+        `<span class="country-name">${c.name}</span>`;
+      $thead.appendChild(th);
+    }
+
+    // Data rows
+    $tbody.innerHTML = '';
+    INDICATORS.forEach((ind, i) => {
+      const tr = document.createElement('tr');
+
+      // Label cell
+      const labelTd = document.createElement('td');
+      labelTd.innerHTML =
+        `<div class="indicator-name">${ind.label}</div>` +
+        `<div class="indicator-unit">${ind.unit}</div>`;
+      tr.appendChild(labelTd);
+
+      // Value cells per country
+      for (const c of COUNTRIES) {
+        const td = document.createElement('td');
+        const entry = results[i][c.code];
+
+        if (!entry || entry.value === null || entry.value === undefined) {
+          td.innerHTML =
+            `<div class="cell-inner">` +
+              `<span class="cell-value neutral">N/A</span>` +
+            `</div>`;
+        } else {
+          const cls  = ind.color(entry.value);
+          const disp = ind.fmt(entry.value);
+          td.innerHTML =
+            `<div class="cell-inner">` +
+              `<span class="cell-value ${cls}">${disp}</span>` +
+              `<span class="cell-unit">${ind.unit}</span>` +
+              `<span class="cell-year">${entry.year}</span>` +
+            `</div>`;
+        }
+        tr.appendChild(td);
+      }
+
+      $tbody.appendChild(tr);
+    });
+  }
+
+  /* ── Main init ──────────────────────────────────────────────── */
+  async function init() {
+    if (isFetching) return;
+    isFetching = true;
+    showLoading();
+
+    try {
+      const [wbResults, bondData, energyData, freightData] = await Promise.all([
+        Promise.all(INDICATORS.map(fetchIndicator)),
+        fetchBondYields().catch(err => {
+          console.warn('Bond data fetch failed:', err);
+          return null;
+        }),
+        fetchEnergyData().catch(err => {
+          console.warn('Energy data fetch failed:', err);
+          return null;
+        }),
+        fetchFreightData().catch(err => {
+          console.warn('Freight fetch failed:', err);
+          return null;
+        }),
+      ]);
+
+      buildTable(wbResults);
+
+      if (bondData) {
+        buildBondTable(bondData);
+      } else {
+        document.getElementById('bond-table-wrapper').innerHTML =
+          `<p style="padding:1.25rem;color:var(--text-muted);font-size:0.85rem;">` +
+          `Bond data unavailable — OECD API could not be reached.</p>`;
+      }
+
+      if (energyData) {
+        buildEnergyTable(energyData);
+      } else {
+        document.getElementById('energy-table-wrapper').innerHTML =
+          `<p style="padding:1.25rem;color:var(--text-muted);font-size:0.85rem;">` +
+          `Energy data unavailable — World Bank API could not be reached.</p>`;
+      }
+
+      if (freightData) {
+        buildFreightTable(freightData);
+      } else {
+        document.getElementById('freight-table-wrapper').innerHTML =
+          `<p style="padding:1.25rem;color:var(--text-muted);font-size:0.85rem;">` +
+          `Freight data unavailable — World Bank API could not be reached.</p>`;
+      }
+
+      showDashboard();
+    } catch (err) {
+      console.error(err);
+      showError(
+        `Failed to load data: ${err.message}. ` +
+        `Check your internet connection and try again.`
+      );
+    } finally {
+      isFetching = false;
+    }
+  }
+
+  init();
+</script>
+</body>
+</html>
