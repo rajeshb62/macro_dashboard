@@ -332,7 +332,7 @@
   <!-- Loading -->
   <section id="loading">
     <div class="spinner"></div>
-    <p>Fetching from World Bank Open Data…</p>
+    <p>Fetching macroeconomic data…</p>
   </section>
 
   <!-- Error -->
@@ -365,6 +365,7 @@
       <span class="legend-item"><span class="legend-dot" style="background:var(--color-bad)"></span>Concern</span>
       <span class="legend-item"><span class="legend-dot" style="background:var(--color-neutral)"></span>Neutral / N/A</span>
     </div>
+    <p class="bond-footnote">EU = European Union aggregate. Source: World Bank Open Data via Vercel proxy.</p>
 
     <div class="section-divider">
       <span>Bond Markets</span>
@@ -414,8 +415,9 @@
 </main>
 
 <footer>
-  Data sourced from the <a href="https://data.worldbank.org/" target="_blank" rel="noopener">World Bank Open Data API</a>.
-  Values represent the most recent available year. All rights reserved by respective data providers.
+  Macro, Energy &amp; Freight: <a href="https://data.worldbank.org/" target="_blank" rel="noopener">World Bank Open Data</a> via Vercel proxy ·
+  Bonds: <a href="https://data.oecd.org/" target="_blank" rel="noopener">OECD</a>.
+  Values represent most recent available year. All rights reserved by respective data providers.
 </footer>
 
 <script>
@@ -491,8 +493,8 @@
 
   const KTOE_TO_TWH = 0.01163;
 
-  const API_BASE = 'https://api.worldbank.org/v2';
-  const COUNTRY_PARAM = COUNTRIES.map(c => c.code).join(';');
+  const WB_API_BASE = 'https://api.worldbank.org/v2';
+  const WB_COUNTRY_PARAM = COUNTRIES.map(c => c.code).join(';');
 
   // OECD country code mapping (null = not an OECD member → show N/A)
   const OECD_COUNTRY_MAP = { US: 'USA', CN: null, EU: 'DEU', JP: 'JPN', IN: 'IND', GB: 'GBR' };
@@ -532,29 +534,14 @@
     $dashboard.style.display = 'block';
   }
 
-  /* ── Fetch one indicator for all countries ──────────────────── */
-  async function fetchIndicator(indicator) {
-    const url =
-      `${API_BASE}/country/${COUNTRY_PARAM}/indicator/${indicator.id}` +
-      `?format=json&mrv=1&per_page=10`;
+  /* ── Fetch all macro indicators via Vercel proxy (World Bank) ── */
+  async function fetchIMFMacro() {
+    const res = await fetch('/api/macro');
+    if (!res.ok) throw new Error(`Macro proxy HTTP ${res.status}`);
+    const combined = await res.json();
 
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`HTTP ${res.status} for ${indicator.id}`);
-
-    const json = await res.json();
-    const dataArray = (json[1] ?? []);
-
-    // Build map: countryCode → { value, year }
-    const map = {};
-    for (const item of dataArray) {
-      const code = item.countryiso3166alpha2 ?? item.country?.id ?? null;
-      if (!code) continue;
-      map[code.toUpperCase()] = {
-        value: item.value,   // may be null
-        year:  item.date,
-      };
-    }
-    return map;
+    // World Bank codes already match dashboard codes — no remapping needed
+    return INDICATORS.map(ind => combined[ind.id] ?? {});
   }
 
   /* ── Fetch OECD 10Y bond yields ─────────────────────────────── */
@@ -618,7 +605,7 @@
 
     async function fetchLatest(indicatorId) {
       const url =
-        `${API_BASE}/country/${COUNTRY_PARAM}/indicator/${indicatorId}` +
+        `${WB_API_BASE}/country/${WB_COUNTRY_PARAM}/indicator/${indicatorId}` +
         `?format=json&mrv=5&per_page=50`;
       const res = await fetch(url);
       if (!res.ok) throw new Error(`HTTP ${res.status} for ${indicatorId}`);
@@ -706,7 +693,7 @@
   /* ── Fetch freight volumes ──────────────────────────────────── */
   async function fetchFreightData() {
     async function fetchLatest(indicatorId) {
-      const url = `${API_BASE}/country/${COUNTRY_PARAM}/indicator/${indicatorId}`
+      const url = `${WB_API_BASE}/country/${WB_COUNTRY_PARAM}/indicator/${indicatorId}`
         + `?format=json&mrv=5&per_page=50`;
       const res = await fetch(url);
       if (!res.ok) throw new Error(`HTTP ${res.status} for ${indicatorId}`);
@@ -933,7 +920,7 @@
 
     try {
       const [wbResults, bondData, energyData, freightData] = await Promise.all([
-        Promise.all(INDICATORS.map(fetchIndicator)),
+        fetchIMFMacro(),
         fetchBondYields().catch(err => {
           console.warn('Bond data fetch failed:', err);
           return null;
