@@ -844,14 +844,12 @@
       return map;
     }
 
-    const [railData, airData, seaData, exportData, importData] = await Promise.all([
-      fetchLatest('IS.RRS.GOOD.MT.K6'),
-      fetchLatest('IS.AIR.GOOD.MT.K1'),
+    const [seaData, exportData, importData] = await Promise.all([
       fetchLatest('IS.SHP.GOOD.TU'),
       fetchLatest('BX.GSR.MRCH.CD'),
       fetchLatest('BM.GSR.MRCH.CD'),
     ]);
-    return { railData, airData, seaData, exportData, importData };
+    return { seaData, exportData, importData };
   }
 
   /* ── Format large freight numbers as K / M / B ──────────────── */
@@ -885,11 +883,9 @@
     tbody.innerHTML = '';
 
     const rows = [
-      { label: 'Rail Freight',     unit: 'M ton-km',      data: railData,    fmt: fmtFreight },
-      { label: 'Air Freight',      unit: 'M ton-km',      data: airData,     fmt: fmtFreight },
-      { label: 'Sea Freight',      unit: 'TEU',            data: seaData,     fmt: fmtFreight },
-      { label: 'Merch. Exports',   unit: 'goods, current $', data: exportData, fmt: fmtUSD },
-      { label: 'Merch. Imports',   unit: 'goods, current $', data: importData, fmt: fmtUSD },
+      { label: 'Sea Freight',      unit: 'TEU',              data: seaData,     fmt: fmtFreight },
+      { label: 'Merch. Exports',   unit: 'goods, current $', data: exportData,  fmt: fmtUSD },
+      { label: 'Merch. Imports',   unit: 'goods, current $', data: importData,  fmt: fmtUSD },
     ];
 
     for (const row of rows) {
