@@ -365,7 +365,7 @@
       <span class="legend-item"><span class="legend-dot" style="background:var(--color-bad)"></span>Concern</span>
       <span class="legend-item"><span class="legend-dot" style="background:var(--color-neutral)"></span>Neutral / N/A</span>
     </div>
-    <p class="bond-footnote">EU = European Union aggregate. Source: World Bank Open Data via Vercel proxy.</p>
+    <p class="bond-footnote">EU = Germany (DEU) as proxy. Source: OECD Economic Outlook (Nov 2025) via Vercel proxy. Government debt N/A for China and India.</p>
 
     <div class="section-divider">
       <span>Bond Markets</span>
@@ -415,8 +415,9 @@
 </main>
 
 <footer>
-  Macro, Energy &amp; Freight: <a href="https://data.worldbank.org/" target="_blank" rel="noopener">World Bank Open Data</a> via Vercel proxy ·
-  Bonds: <a href="https://data.oecd.org/" target="_blank" rel="noopener">OECD</a>.
+  Macro: <a href="https://www.oecd.org/economic-outlook/" target="_blank" rel="noopener">OECD Economic Outlook</a> via Vercel proxy ·
+  Bonds: <a href="https://data.oecd.org/" target="_blank" rel="noopener">OECD</a> ·
+  Energy &amp; Freight: <a href="https://data.worldbank.org/" target="_blank" rel="noopener">World Bank</a>.
   Values represent most recent available year. All rights reserved by respective data providers.
 </footer>
 
@@ -534,13 +535,74 @@
     $dashboard.style.display = 'block';
   }
 
-  /* ── Fetch all macro indicators via Vercel proxy (World Bank) ── */
-  async function fetchIMFMacro() {
-    const res = await fetch('/api/macro');
-    if (!res.ok) throw new Error(`Macro proxy HTTP ${res.status}`);
-    const combined = await res.json();
+  /* ── Fetch macro indicators directly from OECD Economic Outlook ─ */
+  const OECD_EO_URL =
+    'https://sdmx.oecd.org/public/rest/data/OECD.ECO.MAD,DSD_EO@DF_EO/' +
+    'USA+CHN+DEU+JPN+IND+GBR.GDPV_ANNPCT+CPI+UNR+CBGDPR+GGFLQ.A' +
+    '?startPeriod=2022&format=jsondata';
 
-    // World Bank codes already match dashboard codes — no remapping needed
+  const MEASURE_TO_IND = {
+    GDPV_ANNPCT: 'NY.GDP.MKTP.KD.ZG',
+    CPI:         'FP.CPI.TOTL.ZG',
+    UNR:         'SL.UEM.TOTL.ZS',
+    CBGDPR:      'BN.CAB.XOKA.GD.ZS',
+    GGFLQ:       'GC.DOD.TOTL.GD.ZS',
+  };
+  const OECD_TO_DASH = { USA:'US', CHN:'CN', DEU:'EU', JPN:'JP', IND:'IN', GBR:'GB' };
+
+  async function fetchIMFMacro() {
+    const res = await fetch(OECD_EO_URL, { headers: { Accept: 'application/json' } });
+    if (!res.ok) throw new Error(`OECD EO HTTP ${res.status}`);
+    const json = await res.json();
+
+    const data    = json.data;
+    const struct  = data.structures[0];
+    const areaDim = struct.dimensions.series[0];
+    const measDim = struct.dimensions.series[1];
+    const timeDim = struct.dimensions.observation[0];
+    const areaVals = areaDim.values;
+    const measVals = measDim.values;
+    const timeVals = timeDim.values;
+
+    const raw = {};
+    for (const meas of measVals) raw[meas.id] = {};
+
+    for (const [key, series] of Object.entries(data.dataSets[0].series)) {
+      const parts    = key.split(':');
+      const oecdArea = areaVals[parseInt(parts[0])].id;
+      const oecdMeas = measVals[parseInt(parts[1])].id;
+      const dashCode = OECD_TO_DASH[oecdArea];
+      if (!dashCode) continue;
+      raw[oecdMeas][dashCode] ??= {};
+      for (const [tidx, obs] of Object.entries(series.observations)) {
+        if (!obs || obs[0] === null || obs[0] === undefined) continue;
+        const period = timeVals[parseInt(tidx)].id;
+        if (period.includes('-')) continue;
+        raw[oecdMeas][dashCode][period] = obs[0];
+      }
+    }
+
+    const combined = {};
+    for (const [oecdMeas, wbId] of Object.entries(MEASURE_TO_IND)) {
+      combined[wbId] = {};
+      for (const c of COUNTRIES) {
+        const yearMap = raw[oecdMeas]?.[c.code] ?? {};
+        // Cap at 2025 — exclude further-out projections (2026, 2027)
+        const years   = Object.keys(yearMap).filter(y => parseInt(y) <= 2025).sort();
+        if (oecdMeas === 'CPI') {
+          if (years.length < 2) { combined[wbId][c.code] = { value: null, year: null }; continue; }
+          const latest = years[years.length - 1];
+          const prev   = years[years.length - 2];
+          combined[wbId][c.code] = { value: (yearMap[latest] / yearMap[prev] - 1) * 100, year: latest };
+        } else {
+          const latest = years[years.length - 1] ?? null;
+          combined[wbId][c.code] = latest
+            ? { value: yearMap[latest], year: latest }
+            : { value: null, year: null };
+        }
+      }
+    }
+
     return INDICATORS.map(ind => combined[ind.id] ?? {});
   }
 
