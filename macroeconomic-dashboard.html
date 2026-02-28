@@ -434,6 +434,17 @@
 
   const INDICATORS = [
     {
+      id:    'NY.GDP.MKTP.CD',
+      label: 'GDP (Nominal)',
+      unit:  'current USD',
+      fmt:   v => {
+        if (v >= 1e12) return '$' + (v / 1e12).toFixed(1) + 'T';
+        if (v >= 1e9)  return '$' + (v / 1e9).toFixed(0) + 'B';
+        return '$' + v.toLocaleString();
+      },
+      color: () => 'neutral',
+    },
+    {
       id:    'NY.GDP.MKTP.KD.ZG',
       label: 'GDP Growth Rate',
       unit:  '% annual',
@@ -607,18 +618,38 @@
     //   CHN — dropped from combined EO query (missing CBGDPR/GGFLQ measures);
     //          also fetch unemployment + current account from WB (govt debt unavailable)
     //   EU  — DEU has no CPI series in OECD EO at all
-    const [chnCpi, euCpi, chnUnr, chnCab] = await Promise.allSettled([
-      fetchWBIndicator('CN', 'FP.CPI.TOTL.ZG'),  // China CPI
-      fetchWBIndicator('DE', 'FP.CPI.TOTL.ZG'),  // EU proxy CPI (Germany)
-      fetchWBIndicator('CN', 'SL.UEM.TOTL.ZS'),  // China unemployment
-      fetchWBIndicator('CN', 'BN.CAB.XOKA.GD.ZS'), // China current account
+    const [chnCpi, euCpi, chnUnr, chnCab, gdpNom] = await Promise.allSettled([
+      fetchWBIndicator('CN', 'FP.CPI.TOTL.ZG'),       // China CPI
+      fetchWBIndicator('DE', 'FP.CPI.TOTL.ZG'),       // EU proxy CPI (Germany)
+      fetchWBIndicator('CN', 'SL.UEM.TOTL.ZS'),       // China unemployment
+      fetchWBIndicator('CN', 'BN.CAB.XOKA.GD.ZS'),   // China current account
+      fetchWBAllCountries('NY.GDP.MKTP.CD'),           // Nominal GDP all countries
     ]);
     if (chnCpi.status === 'fulfilled' && chnCpi.value) combined['FP.CPI.TOTL.ZG']['CN'] = chnCpi.value;
     if (euCpi.status  === 'fulfilled' && euCpi.value)  combined['FP.CPI.TOTL.ZG']['EU'] = euCpi.value;
     if (chnUnr.status === 'fulfilled' && chnUnr.value) combined['SL.UEM.TOTL.ZS']['CN'] = chnUnr.value;
     if (chnCab.status === 'fulfilled' && chnCab.value) combined['BN.CAB.XOKA.GD.ZS']['CN'] = chnCab.value;
+    combined['NY.GDP.MKTP.CD'] = (gdpNom.status === 'fulfilled' ? gdpNom.value : {});
 
     return INDICATORS.map(ind => combined[ind.id] ?? {});
+  }
+
+  /* ── World Bank: all dashboard countries, one indicator ─────── */
+  async function fetchWBAllCountries(indicatorId) {
+    const url = `${WB_API_BASE}/country/${WB_COUNTRY_PARAM}/indicator/${indicatorId}` +
+                `?format=json&mrv=3&per_page=50`;
+    const res = await fetch(url);
+    if (!res.ok) return {};
+    const [, items] = await res.json();
+    const map = {};
+    for (const item of (items ?? [])) {
+      if (item.value === null) continue;
+      const code = (item.countryiso3166alpha2 ?? item.country?.id ?? '').toUpperCase();
+      if (!code) continue;
+      if (!map[code] || item.date > map[code].year)
+        map[code] = { value: item.value, year: item.date };
+    }
+    return map;
   }
 
   /* ── World Bank indicator fallback ──────────────────────────── */
